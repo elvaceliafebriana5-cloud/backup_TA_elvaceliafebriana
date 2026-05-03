@@ -264,10 +264,37 @@
 
                         <td>{{ p.no_resi_elva or '-' }}</td>
                         <td>
-                            <span class="badge bg-info">
-                                {{ p.status_elva or 'Diproses' }}
-                            </span>
-                        </td>
+    {% if p.status_pengiriman_elva == 'menunggu_verifikasi' %}
+        <span class="badge bg-secondary">
+            Menunggu Verifikasi
+        </span>
+
+    {% elif p.status_pengiriman_elva == 'diverifikasi' %}
+        <span class="badge bg-success">
+            Diverifikasi
+        </span>
+
+    {% elif p.status_pengiriman_elva == 'dikemas' %}
+        <span class="badge bg-warning text-dark">
+            Dikemas
+        </span>
+
+    {% elif p.status_pengiriman_elva == 'dikirim' %}
+        <span class="badge bg-primary">
+            Dikirim
+        </span>
+
+    {% elif p.status_pengiriman_elva == 'selesai' %}
+        <span class="badge bg-dark">
+            Selesai
+        </span>
+
+    {% else %}
+        <span class="badge bg-info">
+            {{ p.status_pengiriman_elva }}
+        </span>
+    {% endif %}
+</td>
                         <td>{{ p.nama_kurir or '-' }}</td>
                         <td>
                             {% if p.foto_bukti_elva %}
@@ -304,27 +331,32 @@
                                 <span class="badge bg-secondary">Belum Ada</span>
                             {% endif %}
                         </td>
+<td>
+    {% if p.status_pengiriman_elva|lower == 'menunggu_verifikasi' %}
+        <form action="/admin_verifikasi_elva/{{ p.id_pengiriman_elva }}" method="POST">
+            <button class="btn btn-success btn-sm">
+                <i class="fa fa-check"></i> Verifikasi
+            </button>
+        </form>
 
-                        <td>
-                            {% if p.status_elva == 'diproses' %}
-                                <form action="/admin_kemas_elva/{{ p.id_pengiriman_elva }}" method="POST">
-                                    <button class="btn btn-warning btn-sm">
-                                        <i class="fa fa-box"></i> Kemas
-                                    </button>
-                                </form>
+    {% elif p.status_pengiriman_elva|lower == 'diverifikasi' %}
+        <form action="/admin_kemas_elva/{{ p.id_pengiriman_elva }}" method="POST">
+            <button class="btn btn-warning btn-sm">
+                <i class="fa fa-box"></i> Kemas
+            </button>
+        </form>
 
-                            {% elif p.status_elva == 'dikemas' %}
-                                <form action="/admin_kirim_elva/{{ p.id_pengiriman_elva }}" method="POST">
-                                    <button class="btn btn-primary btn-sm">
-                                        <i class="fa fa-truck"></i> Kirim
-                                    </button>
-                                </form>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
+    {% elif p.status_pengiriman_elva|lower == 'dikemas' %}
+        <form action="/admin_kirim_elva/{{ p.id_pengiriman_elva }}" method="POST">
+            <button class="btn btn-primary btn-sm">
+                <i class="fa fa-truck"></i> Kirim
+            </button>
+        </form>
 
-                    </tr>
+    {% else %}
+        -
+    {% endif %}
+</td>                    </tr>
                     {% endfor %}
 
                     </tbody>

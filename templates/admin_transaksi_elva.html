@@ -259,11 +259,13 @@
                             <th>No</th>
                             <th>Customer</th>
                             <th>Tanggal</th>
+                            <th>Tanggal Ambil</th>
                             <th>Total</th>
                             <th>Metode</th>
                             <th>Status</th>
                             <th>Pengiriman</th>
                             <th>QR Resi</th>
+                            <th>Struk</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -272,6 +274,13 @@
                             <td>{{ loop.index }}</td>
                             <td>{{ t.nama_customer }}</td>
                             <td>{{ t.tanggal_elva }}</td>
+                            <td>
+                            {% if t.kurir_elva == 'Ambil Sendiri' %}
+                            {{ t.tanggal_pengambilan_elva or '-' }}
+                            {% else %}
+                                -
+                            {% endif %}
+                            </td>
                             <td class="fw-bold text-primary">
                                 Rp {{ "{:,.0f}".format(t.total_elva) }}
                             </td>

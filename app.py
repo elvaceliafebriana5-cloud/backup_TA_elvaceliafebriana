@@ -1,14 +1,15 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
-from flask import jsonify
+from werkzeug.utils import secure_filename
+
+from datetime import datetime, timedelta
+
 import mysql.connector
 import qrcode
 import os
 import random
 import re
-from werkzeug.utils import secure_filename
-import os
+
 from fpdf import FPDF
 
 app = Flask(__name__)
@@ -653,7 +654,6 @@ def admin_transaksi_elva():
     return render_template('admin_transaksi_elva.html', transaksi=transaksi)
 
 
-
 @app.route('/admin_pengiriman_elva')
 @role_required(['admin','super_admin'])
 def admin_pengiriman_elva():
@@ -669,29 +669,39 @@ def admin_pengiriman_elva():
         t.alamat_elva,
         t.total_elva,
         t.metode_bayar_elva,
+        t.status_elva,
         u.nama_elva AS customer,
 
         pg.id_pengiriman_elva,
         pg.no_resi_elva,
-        pg.status_elva,
-        pg.foto_bukti_elva,   -- ✅ TAMBAHKAN INI
 
+        CASE 
+            WHEN pg.status_elva IS NULL 
+                 OR pg.status_elva = '' 
+            THEN 'menunggu_verifikasi'
+            ELSE LOWER(pg.status_elva)
+        END AS status_pengiriman_elva,
+
+        pg.foto_bukti_elva,
         kurir.nama_elva AS nama_kurir
 
     FROM transaksi_elva t
+
     LEFT JOIN users_elva u
         ON u.id_user_elva = t.id_user_elva
+
     LEFT JOIN pengiriman_elva pg
         ON pg.id_transaksi_elva = t.id_transaksi_elva
+
     LEFT JOIN users_elva kurir
         ON kurir.id_user_elva = pg.id_kurir_elva
         AND kurir.role_elva = 'kurir'
+
     WHERE t.tipe_elva = 'online'
     AND t.kurir_elva != 'Ambil Sendiri'
+
     ORDER BY t.id_transaksi_elva DESC
-""")
-
-
+    """)
 
     pengiriman = cursor.fetchall()
 
@@ -782,7 +792,49 @@ def admin_kirim_elva(id_pengiriman):
     conn.close()
 
     return redirect(url_for('admin_pengiriman_elva'))
+@app.route('/admin_verifikasi_elva/<int:id_pengiriman>', methods=['POST'])
+@role_required(['admin','super_admin'])
+def admin_verifikasi_elva(id_pengiriman):
 
+    conn = get_db_connection_elva()
+    cursor = conn.cursor()
+
+    # 🔹 Update pengiriman
+    cursor.execute("""
+        UPDATE pengiriman_elva
+        SET status_elva='diverifikasi',
+            keterangan_elva='Pesanan telah diverifikasi admin'
+        WHERE id_pengiriman_elva=%s
+    """, (id_pengiriman,))
+
+    # 🔹 Update transaksi
+# 🔹 Update transaksi
+    cursor.execute("""
+        UPDATE transaksi_elva t
+        JOIN pengiriman_elva p
+        ON t.id_transaksi_elva = p.id_transaksi_elva
+        SET 
+            t.status_pengiriman_elva = 'diverifikasi',
+            t.status_elva = 'diproses',
+            t.status_verifikasi_elva = 'sudah_verifikasi'
+        WHERE p.id_pengiriman_elva = %s
+    """, (id_pengiriman,))
+    # 🔥 Tracking
+    cursor.execute("""
+        INSERT INTO tracking_pengiriman_elva
+        (id_pengiriman_elva, status_tracking, keterangan_tracking, waktu_tracking)
+        VALUES (%s, %s, %s, NOW())
+    """, (
+        id_pengiriman,
+        'diverifikasi',
+        'Pesanan telah diverifikasi admin'
+    ))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return redirect(url_for('admin_pengiriman_elva'))
 @app.route('/scan_qr_elva', methods=['POST'])
 @role_required(['admin','super_admin'])
 def scan_qr_elva():
@@ -879,7 +931,7 @@ def shop_online_elva():
 
     if kategori_elva_id:
         query += " AND o.kategori_id_elva=%s"
-        params.append(kategori_elva_id)
+        params.append(int(kategori_elva_id))
 
     cursor.execute(query, params)
     obat_elva = cursor.fetchall()
@@ -894,7 +946,7 @@ def shop_online_elva():
         t.tanggal_elva,
         t.total_elva,
         t.status_elva,
-        t.status_pengiriman_elva AS status_pengiriman,
+        COALESCE(p.status_elva, 'menunggu_verifikasi') AS status_pengiriman,
         t.kurir_elva,
         p.no_resi_elva
     FROM transaksi_elva t
@@ -902,15 +954,14 @@ def shop_online_elva():
         ON p.id_transaksi_elva = t.id_transaksi_elva
     WHERE t.id_user_elva=%s
     AND t.tipe_elva='online'
-    AND (t.status_pengiriman_elva IS NULL 
-         OR t.status_pengiriman_elva NOT IN ('sampai','selesai'))
+    AND (
+        p.status_elva IS NULL
+        OR p.status_elva NOT IN ('sampai')
+    )
     ORDER BY t.id_transaksi_elva DESC
     LIMIT 5
-""", (session['user_online_elva'],))
-
+    """, (session['user_online_elva'],))
     list_pesanan = cursor.fetchall()
-
-
     cursor.execute("""
     SELECT 
         t.id_transaksi_elva,
@@ -952,12 +1003,13 @@ def riwayat_transaksi_elva():
         t.tanggal_elva,
         t.total_elva
     FROM transaksi_elva t
+    LEFT JOIN pengiriman_elva p
+        ON p.id_transaksi_elva = t.id_transaksi_elva
     WHERE t.id_user_elva=%s
     AND t.tipe_elva='online'
-    AND t.status_pengiriman_elva IN ('sampai','selesai')
+    AND p.status_elva = 'sampai'
     ORDER BY t.id_transaksi_elva DESC
-""", (session['user_online_elva'],))
-
+    """, (session['user_online_elva'],))
     riwayat = cursor.fetchall()
 
     cursor.close()
@@ -1148,130 +1200,235 @@ def checkout_form_elva():
         diskon_elva=diskon_elva,
         nama_elva=session['nama_online_elva']
     )
+import os
+from datetime import datetime, timedelta
+from werkzeug.utils import secure_filename
+
+UPLOAD_FOLDER = 'static/bukti_bayar'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+import os
+from datetime import datetime, timedelta
+from werkzeug.utils import secure_filename
+
+# ================= CONFIG =================
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
+UPLOAD_FOLDER = 'static/bukti_bayar'
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 @app.route('/checkout_online_elva', methods=['POST'])
 def checkout_online_elva():
 
     if 'user_online_elva' not in session:
         return redirect(url_for('login_elva'))
 
-    alamat_elva = request.form.get('alamat_elva', '')
-    metode_bayar_elva = request.form['metode_bayar_elva']
+    conn = get_db_connection_elva()
+    cursor = conn.cursor()
 
-    kurir_raw = request.form['kurir_elva']
-    kurir_elva, ongkir_elva = kurir_raw.split('|')
-    ongkir_elva = int(ongkir_elva)
+    try:
+        # ================= INPUT =================
+        alamat_elva = request.form.get('alamat_elva', '').strip()
+        metode_bayar_elva = request.form.get('metode_bayar_elva')
+        metode_detail = request.form.get('metode_transfer')
+        kurir_raw = request.form.get('kurir_elva')
 
-    cart = session.get('cart_elva', [])
-    if not cart:
-        return redirect(url_for('shop_online_elva'))
+        # ================= VALIDASI =================
+        if metode_bayar_elva != "TRANSFER":
+            flash("Metode pembayaran harus transfer!", "danger")
+            return redirect(url_for('checkout_form_elva'))
+
+        if not metode_detail:
+            flash("Pilih metode transfer dulu!", "danger")
+            return redirect(url_for('checkout_form_elva'))
+
+        if not kurir_raw or '|' not in kurir_raw:
+            flash("Kurir tidak valid!", "danger")
+            return redirect(url_for('checkout_form_elva'))
+
+        # ================= FILE =================
+        file = request.files.get('bukti_bayar_elva')
+
+        if not file or file.filename == '':
+            flash("Bukti pembayaran wajib diupload!", "danger")
+            return redirect(url_for('checkout_form_elva'))
+
+        if not allowed_file(file.filename):
+            flash("Format file harus gambar!", "danger")
+            return redirect(url_for('checkout_form_elva'))
+
+        filename = f"{int(datetime.now().timestamp())}_{secure_filename(file.filename)}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+
+        db_filepath = f"bukti_bayar/{filename}"
+
+        # ================= KURIR =================
+        kurir_elva, ongkir_elva = kurir_raw.split('|')
+        ongkir_elva = int(ongkir_elva)
+
+        tanggal_pengambilan = None
+        if kurir_elva.lower() == "ambil sendiri":
+            tanggal_pengambilan = datetime.now() + timedelta(days=1)
+
+        # ================= CART =================
+        cart = session.get('cart_elva', [])
+        if not cart:
+            flash("Keranjang kosong!", "danger")
+            return redirect(url_for('shop_online_elva'))
+
+        # ================= HITUNG =================
+        id_user_elva = session['user_online_elva']
+        no_faktur_elva = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+        total_barang = sum(i['harga_elva'] * i['jumlah_elva'] for i in cart)
+        pajak = int(total_barang * 0.1)
+        diskon = int(total_barang * 0.1) if total_barang >= 50000 else 0
+        grand_total = total_barang + pajak + ongkir_elva - diskon
+
+        # ================= INSERT TRANSAKSI =================
+        cursor.execute("""
+            INSERT INTO transaksi_elva (
+                no_faktur_elva,
+                tanggal_elva,
+                id_user_elva,
+                alamat_elva,
+                metode_bayar_elva,
+                metode_detail_elva,
+                kurir_elva,
+                ongkir_elva,
+                total_elva,
+                tipe_elva,
+                status_elva,
+                status_verifikasi_elva,
+                bukti_bayar_elva,
+                tanggal_pengambilan_elva
+            )
+            VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, %s,
+                    'online', %s, %s, %s, %s)
+        """, (
+            no_faktur_elva,
+            id_user_elva,
+            alamat_elva,
+            metode_bayar_elva,
+            metode_detail,
+            kurir_elva,
+            ongkir_elva,
+            grand_total,
+            'menunggu_verifikasi',
+            'menunggu',
+            db_filepath,
+            tanggal_pengambilan
+        ))
+
+        id_transaksi = cursor.lastrowid
+
+        # ================= DETAIL =================
+        for item in cart:
+            cursor.execute("""
+                INSERT INTO transaksi_detail_elva
+                (id_transaksi_elva, id_obat_elva, jumlah_elva, harga_elva, total_elva)
+                VALUES (%s,%s,%s,%s,%s)
+            """, (
+                id_transaksi,
+                item['id_obat_elva'],
+                item['jumlah_elva'],
+                item['harga_elva'],
+                item['harga_elva'] * item['jumlah_elva']
+            ))
+
+        # ================= RESI =================
+        no_resi_elva = f"ELVA-{datetime.now().strftime('%Y%m%d')}-{id_transaksi}"
+
+        qr_path_db = None
+
+        # ================= QR RESI (HANYA ANTAR) =================
+        if kurir_elva.lower() != "ambil sendiri":
+            import qrcode
+
+            qr_folder = 'static/qr_resi_elva'
+            os.makedirs(qr_folder, exist_ok=True)
+
+            qr_data = f"RESI:{no_resi_elva}|ID:{id_transaksi}"
+            qr_filename = f"{no_resi_elva}.png"
+
+            qr_full_path = os.path.join(qr_folder, qr_filename)
+
+            qr_img = qrcode.make(qr_data)
+            qr_img.save(qr_full_path)
+
+            qr_path_db = f"qr_resi_elva/{qr_filename}"
+
+        # ================= INSERT PENGIRIMAN =================
+        cursor.execute("""
+            INSERT INTO pengiriman_elva
+            (id_transaksi_elva, no_resi_elva, status_elva, keterangan_elva, qr_resi_elva)
+            VALUES (%s,%s,'menunggu','Menunggu verifikasi pembayaran', %s)
+        """, (
+            id_transaksi,
+            no_resi_elva,
+            qr_path_db
+        ))
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print("ERROR CHECKOUT:", e)
+        flash(f"Terjadi kesalahan: {str(e)}", "danger")
+        return redirect(url_for('checkout_form_elva'))
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    # ================= CLEAR =================
+    session.pop('cart_elva', None)
+
+    flash('Pesanan berhasil dibuat, menunggu verifikasi pembayaran', 'success')
+    return redirect(url_for('shop_online_elva'))
+@app.route('/kasir_verifikasi_elva')
+@role_required(['kasir'])
+def kasir_verifikasi_elva():
+
+    conn = get_db_connection_elva()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT * FROM transaksi_elva
+        WHERE status_verifikasi_elva='menunggu'
+        ORDER BY tanggal_elva DESC
+    """)
+    data = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('kasir_verifikasi_elva.html', data=data)
+@app.route('/verifikasi/<int:id>')
+@role_required(['kasir'])
+def verifikasi(id):
 
     conn = get_db_connection_elva()
     cursor = conn.cursor()
 
-    # ✅ USER ONLINE
-    id_user_elva = session['user_online_elva']
-
-    no_faktur_elva = f"INV-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-
-    total_barang = sum(i['harga_elva'] * i['jumlah_elva'] for i in cart)
-    pajak = int(total_barang * 0.1)
-
-    diskon = int(total_barang * 0.1) if total_barang >= 50000 else 0
-
-    grand_total = total_barang + pajak + ongkir_elva - diskon
-
-    # ✅ INSERT TRANSAKSI
     cursor.execute("""
-        INSERT INTO transaksi_elva (
-            no_faktur_elva,
-            tanggal_elva,
-            id_user_elva,
-            alamat_elva,
-            metode_bayar_elva,
-            kurir_elva,
-            ongkir_elva,
-            total_elva,
-            tipe_elva,
-            status_elva
-        )
-        VALUES (%s, NOW(), %s, %s, %s, %s, %s, %s, 'online', 'diproses')
-    """, (
-        no_faktur_elva,
-        id_user_elva,
-        alamat_elva,
-        metode_bayar_elva,
-        kurir_elva,
-        ongkir_elva,
-        grand_total
-    ))
-
-    id_transaksi = cursor.lastrowid
-
-    # ✅ INSERT DETAIL
-    for item in cart:
-        cursor.execute("""
-            INSERT INTO transaksi_detail_elva
-            (id_transaksi_elva, id_obat_elva, jumlah_elva, harga_elva, total_elva)
-            VALUES (%s,%s,%s,%s,%s)
-        """, (
-            id_transaksi,
-            item['id_obat_elva'],
-            item['jumlah_elva'],
-            item['harga_elva'],
-            item['harga_elva'] * item['jumlah_elva']
-        ))
-
-    # ✅ BUAT RESI
-    no_resi_elva = f"ELVA-{datetime.now().strftime('%Y%m%d')}-{id_transaksi}"
-
-    cursor.execute("""
-        INSERT INTO pengiriman_elva
-        (id_transaksi_elva, no_resi_elva, status_elva, keterangan_elva)
-        VALUES (%s,%s,'diproses','Pesanan sedang diproses')
-    """, (id_transaksi, no_resi_elva))
-
-    id_pengiriman = cursor.lastrowid
-
-    # ✅ TRACKING AWAL
-    cursor.execute("""
-        INSERT INTO tracking_pengiriman_elva
-        (id_pengiriman_elva, status_tracking, keterangan_tracking)
-        VALUES (%s,'diproses','Pesanan sedang diproses')
-    """, (id_pengiriman,))
-
-    # ✅ GENERATE QR
-    # ✅ GENERATE QR BERDASARKAN JENIS PENGIRIMAN
-
-    if kurir_elva == "Ambil Sendiri":
-        # 🔹 QR FAKTUR → masuk folder qr_elva
-        qr_folder = 'static/qr_elva'
-        qr_filename = f"{no_faktur_elva}.png"
-        qr_data = no_faktur_elva
-
-    else:
-        # 🔹 QR RESI → masuk folder qr_resi_elva
-        qr_folder = 'static/qr_resi_elva'
-        qr_filename = f"{no_resi_elva}.png"
-        qr_data = no_resi_elva
-
-    # Buat folder kalau belum ada
-    os.makedirs(qr_folder, exist_ok=True)
-
-    qr_path = os.path.join(qr_folder, qr_filename)
-
-    if not os.path.exists(qr_path):
-        qr_img = qrcode.make(qr_data)
-        qr_img.save(qr_path)
+        UPDATE transaksi_elva
+        SET status_verifikasi_elva='verified',
+            status_elva='diproses'
+        WHERE id_transaksi_elva=%s
+    """, (id,))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    session.pop('cart_elva', None)
-    flash('Pesanan berhasil dibuat', 'success')
-
-    return redirect(url_for('shop_online_elva'))
-
+    flash("Pembayaran berhasil diverifikasi", "success")
+    return redirect(url_for('kasir_verifikasi_elva'))
 @app.route('/kurir_scan_resi_elva', methods=['POST'])
 @role_required(['kurir'])
 def kurir_scan_resi_elva():
@@ -1549,31 +1706,88 @@ def proses_scan_online_elva():
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
-        SELECT id_transaksi_elva, no_faktur_elva
+        SELECT id_transaksi_elva, metode_bayar_elva,
+               status_pembayaran_elva, kurir_elva
         FROM transaksi_elva
         WHERE no_faktur_elva=%s
         AND tipe_elva='online'
-        AND status_pembayaran_elva='belum_bayar'
     """, (no_faktur,))
 
-    transaksi = cursor.fetchone()
+    trx = cursor.fetchone()
 
+    if not trx:
+        return jsonify({"status":"error","message":"Tidak ditemukan"})
+
+    # 🔥 DANA
+    # 🔥 DANA
+    if trx['metode_bayar_elva'].lower() == 'dana':
+
+        if trx['status_pembayaran_elva'] != 'lunas':
+
+            cursor.execute("""
+                UPDATE transaksi_elva
+                SET status_pembayaran_elva='lunas'
+                WHERE id_transaksi_elva=%s
+            """,(trx['id_transaksi_elva'],))
+
+            conn.commit()
+
+        return jsonify({
+            "status":"success",
+            "message":"Pembayaran dikonfirmasi",
+            "redirect": url_for('struk_online_elva',
+                                id_transaksi=trx['id_transaksi_elva'])
+        })
+
+    # 💵 COD → LANGSUNG SELESAI
+    if trx['metode_bayar_elva'].lower() == 'cod':
+
+        cursor.execute("""
+            UPDATE transaksi_elva
+            SET status_pembayaran_elva='lunas',
+                status_elva='selesai',
+                status_pengiriman_elva='selesai',
+                waktu_selesai_elva=NOW()
+            WHERE id_transaksi_elva=%s
+        """,(trx['id_transaksi_elva'],))
+
+        conn.commit()
+
+        return jsonify({
+            "status":"success",
+            "message":"Transaksi COD selesai",
+            "redirect": url_for('struk_online_elva',
+                                id_transaksi=trx['id_transaksi_elva'])
+        })
+
+    # DEFAULT (metode lain)
+    return jsonify({
+        "status":"success",
+        "redirect": url_for('struk_online_elva',
+                            id_transaksi=trx['id_transaksi_elva'])
+    })
+@app.route('/konfirmasi_ambil/<int:id>', methods=['POST'])
+def konfirmasi_ambil(id):
+
+    conn = get_db_connection_elva()
+    cursor = conn.cursor()
+
+    now = datetime.now()
+
+    cursor.execute("""
+        UPDATE transaksi_elva
+        SET status_elva='selesai',
+            status_pembayaran_elva='lunas',
+            status_pengiriman_elva='selesai',
+            waktu_selesai_elva=%s
+        WHERE id_transaksi_elva=%s
+    """,(now, id))
+
+    conn.commit()
     cursor.close()
     conn.close()
 
-    if not transaksi:
-        return jsonify({
-            "status": "error",
-            "message": "Pesanan tidak ditemukan / sudah dibayar"
-        })
-
-    return jsonify({
-        "status": "success",
-        "redirect": url_for('struk_online_elva',
-                            id_transaksi=transaksi['id_transaksi_elva'])
-    })
-
-
+    return redirect(url_for('kasir_offline_elva'))
 @app.route('/struk_online_elva/<int:id_transaksi>')
 def struk_online_elva(id_transaksi):
 
@@ -1613,12 +1827,27 @@ def struk_online_elva(id_transaksi):
         transaksi=transaksi,
         items=items
     )
-@app.route('/konfirmasi_bayar_online/<int:id_transaksi>', methods=['POST'])
-def konfirmasi_bayar_online(id_transaksi):
+@app.route('/konfirmasi_bayar_online/<int:id>', methods=['POST'])
+def konfirmasi_bayar_online(id):
 
     conn = get_db_connection_elva()
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
+    # cek dulu
+    cursor.execute("""
+        SELECT status_pembayaran_elva 
+        FROM transaksi_elva
+        WHERE id_transaksi_elva=%s
+    """,(id,))
+    trx = cursor.fetchone()
+
+    if not trx:
+        return jsonify({"status":"error","message":"Data tidak ditemukan"})
+
+    if trx['status_pembayaran_elva'] == 'lunas':
+        return jsonify({"status":"error","message":"Sudah dibayar"})
+
+    # update COD
     cursor.execute("""
         UPDATE transaksi_elva
         SET status_pembayaran_elva='lunas',
@@ -1626,15 +1855,13 @@ def konfirmasi_bayar_online(id_transaksi):
             status_pengiriman_elva='selesai',
             waktu_selesai_elva=NOW()
         WHERE id_transaksi_elva=%s
-    """, (id_transaksi,))
+    """,(id,))
 
     conn.commit()
     cursor.close()
     conn.close()
 
-    flash("Pembayaran berhasil!", "success")
-    return redirect(url_for('kasir_offline_elva'))
-
+    return jsonify({"status":"success"})
 @app.route('/admin_gudang_elva')
 @role_required(['admin', 'super_admin'])
 def admin_gudang_elva():
@@ -1767,8 +1994,6 @@ def admin_peracik_elva():
     d.nama_dokter_elva,
     t.no_faktur_elva,
 
-    -- Jika racikan tampil nama racikan
-    -- Jika bukan racikan tampil nama obat jadi
     COALESCE(rc.nama_obat_elva, a.nama_obat_elva) AS nama_obat,
 
     rd.jenis_obat_elva,
@@ -1777,10 +2002,18 @@ def admin_peracik_elva():
     rd.catatan_elva
 
 FROM resep_elva r
-JOIN pasien_elva p ON r.id_pasien_elva = p.id_pasien_elva
-JOIN dokter_elva d ON r.id_dokter_elva = d.id_dokter_elva
-JOIN transaksi_elva t ON r.id_transaksi_elva = t.id_transaksi_elva
-JOIN resep_detail_elva rd ON r.id_resep_elva = rd.id_resep_elva
+
+LEFT JOIN pasien_elva p 
+    ON r.id_pasien_elva = p.id_pasien_elva
+
+LEFT JOIN dokter_elva d 
+    ON r.id_dokter_elva = d.id_dokter_elva
+
+LEFT JOIN transaksi_elva t 
+    ON r.id_transaksi_elva = t.id_transaksi_elva
+
+LEFT JOIN resep_detail_elva rd 
+    ON r.id_resep_elva = rd.id_resep_elva
 
 LEFT JOIN racikan_elva rc 
     ON rc.id_racikan_elva = rd.id_racikan_elva
@@ -1788,7 +2021,6 @@ LEFT JOIN racikan_elva rc
 LEFT JOIN obat_elva a 
     ON a.id_obat_elva = rd.id_obat_elva
 
-ORDER BY r.id_resep_elva DESC;
     """)
 
     peracik = cursor.fetchall()
@@ -1985,69 +2217,213 @@ def kasir_offline_elva():
     conn = get_db_connection_elva()
     cursor = conn.cursor(dictionary=True)
 
-    # Menyesuaikan dengan tabel pasien_elva
+    # ================= MASTER DATA =================
     cursor.execute("SELECT * FROM pasien_elva ORDER BY nama_lengkap_elva ASC")
     pasien = cursor.fetchall()
 
-    # Menyesuaikan dengan tabel obat_elva
     cursor.execute("SELECT * FROM obat_elva")
     obat = cursor.fetchall()
-    cursor.execute(" SELECT id_dokter_elva ,nama_dokter_elva, spesialis_elva FROM dokter_elva")
+
+    cursor.execute("SELECT id_dokter_elva, nama_dokter_elva FROM dokter_elva")
     dokter = cursor.fetchall()
+
     cursor.execute("SELECT * FROM gudang_elva")
     gudang = cursor.fetchall()
+
+    cursor.execute("""
+    SELECT 
+        t.id_transaksi_elva,
+        t.no_faktur_elva,
+        t.total_elva,
+        t.status_elva,
+        t.status_verifikasi_elva,
+        t.kurir_elva,
+        t.tanggal_elva,
+        u.nama_elva
+    FROM transaksi_elva t
+    LEFT JOIN users_elva u ON t.id_user_elva = u.id_user_elva
+    WHERE t.kurir_elva = 'Ambil Sendiri'
+    AND t.status_elva != 'selesai'
+    AND t.status_verifikasi_elva != 'lunas'
+    ORDER BY t.tanggal_elva DESC
+    """)
+    pesanan_online = cursor.fetchall()
+
     cursor.close()
     conn.close()
 
-    # Mengambil keranjang belanja dari session
     keranjang = session.get('keranjang_elva', [])
     grand_total = sum(item['total'] for item in keranjang)
 
-
-    # Render halaman kasir dengan data pasien, obat, dan keranjang
     return render_template(
         'kasir_offline_elva.html',
         pasien=pasien,
         obat=obat,
-        keranjang=keranjang,
         dokter=dokter,
         gudang=gudang,
+        keranjang=keranjang,
         grand_total=grand_total,
+        pesanan_online=pesanan_online,  # 🔥 KIRIM KE HTML
         today=datetime.now().strftime("%Y-%m-%d")
     )
+@app.route('/verifikasi_pesanan_elva/<int:id>', methods=['POST'])
+@role_required(['kasir'])
+def verifikasi_pesanan_elva(id):
 
+    conn = get_db_connection_elva()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # 🔍 Ambil data transaksi
+        cursor.execute("""
+            SELECT kurir_elva
+            FROM transaksi_elva
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+        transaksi = cursor.fetchone()
+
+        if not transaksi:
+            flash("Transaksi tidak ditemukan!", "danger")
+            return redirect(url_for('kasir_offline_elva'))
+
+        # ❌ VALIDASI: kasir hanya boleh ambil sendiri
+        if transaksi['kurir_elva'] != 'Ambil Sendiri':
+            flash("Verifikasi untuk pengiriman hanya bisa dilakukan admin!", "warning")
+            return redirect(url_for('kasir_offline_elva'))
+
+        # ✅ UPDATE
+        cursor.execute("""
+            UPDATE transaksi_elva
+            SET 
+                status_verifikasi_elva = 'sudah',
+                status_elva = 'diproses'
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+
+        conn.commit()
+        flash("Pesanan berhasil diverifikasi!", "success")
+
+    except Exception as e:
+        conn.rollback()
+        flash(str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('kasir_offline_elva'))
+@app.route('/verifikasi_admin_elva/<int:id>', methods=['POST'])
+@role_required(['admin'])
+def verifikasi_admin_elva(id):
+
+    conn = get_db_connection_elva()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        cursor.execute("""
+            SELECT kurir_elva
+            FROM transaksi_elva
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+        transaksi = cursor.fetchone()
+
+        if not transaksi:
+            flash("Transaksi tidak ditemukan!", "danger")
+            return redirect(url_for('admin_dashboard'))
+
+        # ❌ ADMIN hanya untuk pengiriman
+        if transaksi['kurir_elva'] == 'Ambil Sendiri':
+            flash("Pesanan ambil sendiri diverifikasi kasir!", "warning")
+            return redirect(url_for('admin_dashboard'))
+
+        cursor.execute("""
+            UPDATE transaksi_elva
+            SET 
+                status_verifikasi_elva = 'sudah',
+                status_elva = 'diproses'
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+
+        conn.commit()
+        flash("Pesanan pengiriman berhasil diverifikasi!", "success")
+
+    except Exception as e:
+        conn.rollback()
+        flash(str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+@app.route('/konfirmasi_ambil_elva/<int:id>', methods=['POST'])
+@role_required(['kasir'])
+def konfirmasi_ambil_elva(id):
+
+    conn = get_db_connection_elva()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            UPDATE transaksi_elva
+            SET 
+                status_elva = 'selesai',
+                status_pengiriman_elva = 'selesai',
+                status_verifikasi_elva = 'lunas',
+                waktu_selesai_elva = NOW()
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+        cursor.execute("""
+            UPDATE pengiriman_elva
+            SET 
+                status_elva = 'sampai',
+                       keterangan_elva = 'Diambil sendiri oleh pelanggan'
+            WHERE id_transaksi_elva = %s
+        """, (id,))
+
+        conn.commit()
+
+        # 🔥 LANGSUNG KE STRUK
+        return redirect(url_for('struk_kasir_elva', id=id))
+
+    except Exception as e:
+        conn.rollback()
+        flash(str(e), "danger")
+        return redirect(url_for('kasir_offline_elva'))
+
+    finally:
+        cursor.close()
+        conn.close()
 @app.route('/tambah_pasien_elva', methods=['GET', 'POST'])
 def tambah_pasien_elva():
     if request.method == 'POST':
-        # Ambil data dari form
+        # Ambil data dari form (sesuai HTML baru)
         nama_lengkap = request.form['nama_lengkap']
         tanggal_lahir = request.form['tanggal_lahir']
         jenis_kelamin = request.form['jenis_kelamin']
         alamat = request.form['alamat']
-        umur = request.form['umur']
-        no_telepon = request.form['no_telepon']
-        golongan_darah = request.form['golongan_darah']
-        status_perkawinan = request.form['status_perkawinan']
-        pekerjaan = request.form['pekerjaan']
-        riwayat_penyakit = request.form['riwayat_penyakit']
-        alergi = request.form['alergi']
-        tanggal_kunjungan = request.form['tanggal_kunjungan']
-        status_kesehatan = request.form['status_kesehatan']
-        catatan_khusus = request.form['catatan_khusus']
+        no_telepon = request.form.get('no_telepon')  # optional
+        alergi = request.form.get('alergi')          # optional
+        catatan_khusus = request.form.get('catatan_khusus')  # optional
 
-        # Masukkan data ke dalam database
+        # Masukkan data ke database
         conn = get_db_connection_elva()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO pasien_elva (
-                nama_lengkap_elva, tanggal_lahir_elva, jenis_kelamin_elva, alamat_elva, 
-                umur_elva, no_telepon_elva, golongan_darah_elva, status_perkawinan_elva, 
-                pekerjaan_elva, riwayat_penyakit_elva, alergi_elva, tanggal_kunjungan_elva, 
-                status_kesehatan_elva, catatan_khusus_elva
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (nama_lengkap, tanggal_lahir, jenis_kelamin, alamat, umur, no_telepon, golongan_darah,
-              status_perkawinan, pekerjaan, riwayat_penyakit, alergi, tanggal_kunjungan, status_kesehatan, catatan_khusus))
-        
+                nama_lengkap_elva, tanggal_lahir_elva, jenis_kelamin_elva, 
+                alamat_elva, no_telepon_elva, alergi_elva, catatan_khusus_elva
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            nama_lengkap, 
+            tanggal_lahir, 
+            jenis_kelamin, 
+            alamat, 
+            no_telepon, 
+            alergi, 
+            catatan_khusus
+        ))
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -2065,17 +2441,15 @@ def tambah_dokter_elva():
         alamat = request.form['alamat']
         kota = request.form['kota']
         no_tlp = request.form['no_tlp']
-        email = request.form['email']
-        tgl_mulai_tugas = request.form['tgl_mulai_tugas']
 
         # Masukkan data ke dalam database
         conn = get_db_connection_elva()
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO dokter_elva (
-                nama_dokter_elva, spesialis_elva, alamat, kota_elva, no_tlp_elva, email, tgl_mulai_tugas_elva
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (nama_dokter, spesialis, alamat, kota, no_tlp, email, tgl_mulai_tugas))
+                nama_dokter_elva, spesialis_elva, alamat, kota_elva, no_tlp_elva
+            ) VALUES (%s, %s, %s, %s, %s)
+        """, (nama_dokter, spesialis, alamat, kota, no_tlp))
         
         conn.commit()
         cursor.close()
@@ -2085,14 +2459,51 @@ def tambah_dokter_elva():
         return redirect(url_for('kasir_offline_elva'))
 
     return render_template('tambah_dokter_elva.html')
-@app.route('/pilih_obat_elva', methods=['GET'])
+@app.route('/pilih_obat_elva')
 def pilih_obat_elva():
-    # Ambil daftar obat dari database
+
+    search = request.args.get('search', '')
+    kategori = request.args.get('kategori', '')
+
     conn = get_db_connection_elva()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM obat_elva")
+
+    query = """
+    SELECT o.*, k.nama_kategori_elva
+    FROM obat_elva o
+    JOIN kategori_elva k 
+    ON o.kategori_id_elva = k.id_kategori_elva
+    WHERE 1=1
+    """
+    params = []
+
+    # 🔍 SEARCH
+    if search:
+        query += " AND o.nama_obat_elva LIKE %s"
+        params.append(f"%{search}%")
+
+    # 🔽 FILTER KATEGORI
+    if kategori:
+        query += " AND o.kategori_id_elva = %s"
+        params.append(kategori)
+
+    cursor.execute(query, params)
     obat_list = cursor.fetchall()
-    return render_template('pilih_obat_elva.html', obat_list=obat_list)
+
+    # ambil kategori
+    cursor.execute("SELECT * FROM kategori_elva")
+    kategori_list = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        'pilih_obat_elva.html',
+        obat_list=obat_list,
+        kategori_list=kategori_list,
+        search=search,
+        kategori=kategori
+    )
 @app.route('/tambah_obat_ke_keranjang', methods=['POST'])
 @role_required(['kasir'])
 def tambah_obat_ke_keranjang():
@@ -2365,6 +2776,7 @@ def generate_resep():
 @role_required(['kasir'])
 def proses_bayar_kasir_elva():
 
+    # ================= VALIDASI =================
     if not session.get('keranjang_elva'):
         flash("Keranjang kosong", "danger")
         return redirect(url_for('kasir_offline_elva'))
@@ -2374,17 +2786,26 @@ def proses_bayar_kasir_elva():
         flash("Pasien belum dipilih!", "danger")
         return redirect(url_for('kasir_offline_elva'))
 
-    id_pasien = data_pasien.get('id_pasien')
-    id_dokter = data_pasien.get('id_dokter')
-    no_resep = data_pasien.get('no_resep')
-
     metode_bayar = request.form.get('metode_bayar_elva')
     if not metode_bayar:
         flash("Metode bayar belum dipilih!", "danger")
         return redirect(url_for('kasir_offline_elva'))
 
+    # ================= AMBIL DATA =================
     keranjang = session['keranjang_elva']
 
+    id_pasien = data_pasien.get('id_pasien')
+    id_dokter = data_pasien.get('id_dokter')
+    no_resep = data_pasien.get('no_resep')
+    id_user = session.get('user_id_elva')
+
+    # ================= VALIDASI ITEM =================
+    for item in keranjang:
+        if 'jumlah' not in item or 'harga' not in item or 'total' not in item:
+            flash("Data keranjang tidak valid!", "danger")
+            return redirect(url_for('kasir_offline_elva'))
+
+    # ================= HITUNG TOTAL =================
     subtotal = sum(i['total'] for i in keranjang)
     diskon = subtotal * 0.05 if subtotal > 50000 else 0
     pajak = (subtotal - diskon) * 0.03
@@ -2399,13 +2820,14 @@ def proses_bayar_kasir_elva():
         # ================= INSERT TRANSAKSI =================
         cursor.execute("""
             INSERT INTO transaksi_elva
-            (no_faktur_elva, tanggal_elva, id_pasien_elva,
+            (no_faktur_elva, tanggal_elva, id_user_elva, id_pasien_elva,
              metode_bayar_elva, total_elva,
              tipe_elva, status_elva, status_pengiriman_elva, waktu_selesai_elva)
-            VALUES (%s,%s,%s,%s,%s,'offline','selesai','selesai',%s)
+            VALUES (%s,%s,%s,%s,%s,%s,'offline','selesai','selesai',%s)
         """, (
             no_faktur,
             datetime.now(),
+            id_user,
             id_pasien,
             metode_bayar,
             total_transaksi,
@@ -2414,34 +2836,35 @@ def proses_bayar_kasir_elva():
 
         id_transaksi = cursor.lastrowid
 
-        # ================= INSERT DETAIL =================
+        # ================= INSERT DETAIL TRANSAKSI =================
         for item in keranjang:
-            id_obat = item['ref_id'] if item['tipe'] != 'racikan' else None
+            id_obat = item['ref_id'] if item['tipe'] == 'obat' else None
             id_racikan = item['ref_id'] if item['tipe'] == 'racikan' else None
 
             cursor.execute("""
                 INSERT INTO transaksi_detail_elva
                 (id_transaksi_elva, id_obat_elva, id_racikan_elva,
-                 jumlah_elva, harga_elva, total_elva)
-                VALUES (%s,%s,%s,%s,%s,%s)
+                 jumlah_elva, harga_elva, diskon_elva, total_elva)
+                VALUES (%s,%s,%s,%s,%s,%s,%s)
             """, (
                 id_transaksi,
                 id_obat,
                 id_racikan,
                 item['jumlah'],
                 item['harga'],
+                0,
                 item['total']
             ))
 
         # ================= INSERT RESEP =================
         if no_resep and id_dokter:
 
+            # cek duplikat
             cursor.execute("""
                 SELECT id_resep_elva 
                 FROM resep_elva 
                 WHERE no_resep_elva = %s
             """, (no_resep,))
-
             if cursor.fetchone():
                 raise Exception("No resep sudah digunakan!")
 
@@ -2458,9 +2881,63 @@ def proses_bayar_kasir_elva():
                 datetime.now()
             ))
 
+            id_resep = cursor.lastrowid
+
+            # ================= AMBIL DATA RACIKAN (OPTIMASI) =================
+            racikan_ids = [i['ref_id'] for i in keranjang if i['tipe'] == 'racikan']
+            racikan_map = {}
+
+            if racikan_ids:
+                format_strings = ','.join(['%s'] * len(racikan_ids))
+                cursor.execute(f"""
+                    SELECT id_racikan_elva, dosis_elva, catatan_elva
+                    FROM racikan_elva
+                    WHERE id_racikan_elva IN ({format_strings})
+                """, tuple(racikan_ids))
+
+                racikan_map = {
+                    r['id_racikan_elva']: r
+                    for r in cursor.fetchall()
+                }
+
+            # ================= INSERT RESEP DETAIL =================
+            for item in keranjang:
+
+                id_obat = item['ref_id'] if item['tipe'] == 'obat' else None
+                id_racikan = item['ref_id'] if item['tipe'] == 'racikan' else None
+
+                jenis_obat = (
+                    item.get('jenis_obat_elva')
+                    or ('racikan' if id_racikan else 'obat')
+                )
+
+                # 🔥 LOGIC DOSIS & CATATAN
+                if id_racikan:
+                    racikan_data = racikan_map.get(id_racikan)
+                    dosis = racikan_data['dosis_elva'] if racikan_data else '-'
+                    catatan = racikan_data['catatan_elva'] if racikan_data else '-'
+                else:
+                    dosis = '-'
+                    catatan = '-'
+
+                cursor.execute("""
+                    INSERT INTO resep_detail_elva
+                    (id_resep_elva, id_obat_elva, id_racikan_elva,
+                     jenis_obat_elva, dosis_elva, jumlah_elva, catatan_elva)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    id_resep,
+                    id_obat,
+                    id_racikan,
+                    jenis_obat,
+                    dosis,
+                    item['jumlah'],
+                    catatan
+                ))
+
         conn.commit()
 
-        # ================= AMBIL DATA UNTUK PDF =================
+        # ================= AMBIL DATA STRUK =================
         cursor.execute("""
             SELECT 
                 t.*,
@@ -2468,12 +2945,9 @@ def proses_bayar_kasir_elva():
                 d.nama_dokter_elva,
                 r.no_resep_elva
             FROM transaksi_elva t
-            LEFT JOIN pasien_elva p
-                ON t.id_pasien_elva = p.id_pasien_elva
-            LEFT JOIN resep_elva r
-                ON t.id_transaksi_elva = r.id_transaksi_elva
-            LEFT JOIN dokter_elva d
-                ON r.id_dokter_elva = d.id_dokter_elva
+            LEFT JOIN pasien_elva p ON t.id_pasien_elva = p.id_pasien_elva
+            LEFT JOIN resep_elva r ON t.id_transaksi_elva = r.id_transaksi_elva
+            LEFT JOIN dokter_elva d ON r.id_dokter_elva = d.id_dokter_elva
             WHERE t.id_transaksi_elva=%s
         """, (id_transaksi,))
         transaksi_pdf = cursor.fetchone()
@@ -2483,33 +2957,23 @@ def proses_bayar_kasir_elva():
                 td.jumlah_elva,
                 td.harga_elva,
                 td.total_elva,
-
                 CASE 
-                    WHEN td.id_racikan_elva IS NOT NULL 
-                        THEN rc.nama_obat_elva
+                    WHEN td.id_racikan_elva IS NOT NULL THEN rc.nama_obat_elva
                     ELSE o.nama_obat_elva
                 END AS nama_tampil,
-
                 CASE 
-                    WHEN td.id_racikan_elva IS NOT NULL 
-                        THEN 'Racikan'
+                    WHEN td.id_racikan_elva IS NOT NULL THEN 'Racikan'
                     ELSE o.jenis_obat_elva
                 END AS jenis_tampil,
-
                 rc.dosis_elva,
                 rc.catatan_elva,
-
                 CASE 
-                    WHEN td.id_racikan_elva IS NOT NULL 
-                        THEN 1
+                    WHEN td.id_racikan_elva IS NOT NULL THEN 1
                     ELSE 0
                 END AS is_racikan
-
             FROM transaksi_detail_elva td
-            LEFT JOIN obat_elva o
-                ON td.id_obat_elva = o.id_obat_elva
-            LEFT JOIN racikan_elva rc
-                ON td.id_racikan_elva = rc.id_racikan_elva
+            LEFT JOIN obat_elva o ON td.id_obat_elva = o.id_obat_elva
+            LEFT JOIN racikan_elva rc ON td.id_racikan_elva = rc.id_racikan_elva
             WHERE td.id_transaksi_elva=%s
         """, (id_transaksi,))
         detail_pdf = cursor.fetchall()
@@ -2526,6 +2990,7 @@ def proses_bayar_kasir_elva():
         cursor.close()
         conn.close()
 
+    # ================= CLEAR SESSION =================
     session.pop('keranjang_elva', None)
     session.pop('data_pasien', None)
 

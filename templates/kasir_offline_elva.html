@@ -269,6 +269,60 @@
         <!-- LEFT: Transaction Table -->
         <div class="left">
             <div class="card">
+    <h3>Pesanan Online</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>No Faktur</th>
+                <th>Customer</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+
+            {% for p in pesanan_online %}
+            <tr>
+                <td>{{ p.no_faktur_elva }}</td>
+                <td>{{ p.nama_elva }}</td>
+                <td>Rp {{ "{:,}".format(p.total_elva) }}</td>
+                <td>
+                    {{ p.status_elva }} <br>
+                    <small>{{ p.status_verifikasi_elva }}</small>
+                </td>
+
+                <td>
+
+                    <!-- 🔥 VERIFIKASI -->
+                    {% if p.status_verifikasi_elva == 'menunggu' %}
+                    <form method="POST"
+                          action="/verifikasi_pesanan_elva/{{ p.id_transaksi_elva }}">
+                        <button class="btn btn-blue">
+                            Verifikasi
+                        </button>
+                    </form>
+                    {% endif %}
+
+                    <!-- 🔥 KONFIRMASI AMBIL -->
+                    {% if p.status_elva == 'diproses' %}
+                    <form method="POST"
+                          action="/konfirmasi_ambil_elva/{{ p.id_transaksi_elva }}">
+                        <button class="btn btn-red">
+                            Konfirmasi Ambil
+                        </button>
+                    </form>
+                    {% endif %}
+
+                </td>
+            </tr>
+            {% endfor %}
+
+        </tbody>
+    </table>
+</div>
+            <div class="card">
                 <h3>Daftar Item</h3>
                 <table>
                     <thead>
@@ -364,7 +418,7 @@
                         <button type="button" class="btn btn-blue" onclick="setRSP()">+ Resep</button>
                         <a href="/reset_kasir_elva" class="btn btn-red">Reset</a>
                         <a href="/scan_qr_online_elva" class="btn btn-blue">
-                            📷 Scan Pesanan Online
+                            💳 Scan QR Dana
                         </a>
 
                         <!-- 🔥 INI YANG BENAR -->
@@ -480,7 +534,7 @@
         </tr>`;
             });
         }
-
+        
     </script>
 
 </body>

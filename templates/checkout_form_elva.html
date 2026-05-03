@@ -54,38 +54,90 @@
                     <hr>
 
                     <!-- FORM CHECKOUT -->
-                    <form method="POST" action="{{ url_for('checkout_online_elva') }}">
+                    <form method="POST"
+      action="{{ url_for('checkout_online_elva') }}"
+      enctype="multipart/form-data">
 
-                        <input type="hidden" name="kurir_elva"
-                               value="{{ kurir_elva }}|{{ ongkir_elva }}">
+    <input type="hidden" name="kurir_elva"
+           value="{{ kurir_elva }}|{{ ongkir_elva }}">
 
-                        {% if kurir_elva != 'Ambil Sendiri' %}
-                        <div class="mb-3">
-                            <label class="form-label">Alamat Pengiriman</label>
-                            <textarea name="alamat_elva"
-                                      class="form-control"
-                                      required></textarea>
-                        </div>
-                        {% else %}
-                        <input type="hidden" name="alamat_elva" value="">
-                        <div class="alert alert-info small">
-                            Pesanan akan diambil langsung di apotek.
-                        </div>
-                        {% endif %}
+    {% if kurir_elva != 'Ambil Sendiri' %}
+    <div class="mb-3">
+        <label class="form-label">Alamat Pengiriman</label>
+        <textarea name="alamat_elva"
+                  class="form-control"
+                  required></textarea>
+    </div>
+    {% else %}
+    <input type="hidden" name="alamat_elva" value="">
+    <div class="alert alert-info small">
+        Pesanan akan diambil langsung di apotek.
+    </div>
+    {% endif %}
 
-                        <div class="mb-3">
-                            <label class="form-label">Metode Pembayaran</label>
-                            <select name="metode_bayar_elva" class="form-select" required>
-                                <option value="">-- Pilih --</option>
-                                <option value="COD">COD</option>
-                                <option value="DANA">DANA</option>
-                            </select>
-                        </div>
+    <!-- ✅ PAYMENT FIX -->
+    <!-- METODE PEMBAYARAN -->
+<div class="mb-3">
+    <label class="form-label">Metode Pembayaran</label>
 
-                        <button class="btn btn-success w-100">
-                            Proses Checkout
-                        </button>
-                    </form>
+    <select id="metode_bayar"
+            name="metode_bayar_elva"
+            class="form-select"
+            onchange="showPaymentOptions()"
+            required>
+
+        <option value="">-- Pilih --</option>
+        <option value="TRANSFER">Transfer</option>
+
+    </select>
+</div>
+
+<!-- OPSI TRANSFER -->
+<div id="opsi_transfer" style="display:none;">
+
+    <label class="form-label">Pilih Metode Transfer</label>
+
+    <select id="metode_transfer"
+        name="metode_transfer"
+        class="form-select"
+        onchange="showQRIS()"
+        required>
+
+        <option value="">-- Pilih Metode --</option>
+        <option value="QRIS">QRIS</option>
+
+    </select>
+
+</div>
+
+<!-- QRIS IMAGE -->
+<div id="qris_box" class="mt-3 text-center" style="display:none;">
+    <p class="fw-bold">Scan QRIS untuk pembayaran</p>
+
+    <img src="{{ url_for('static', filename='qris_elva.png') }}"
+         alt="QRIS"
+         class="img-fluid"
+         style="max-width:250px; border:1px solid #ddd; padding:10px; border-radius:10px;">
+
+    <p class="small text-muted mt-2">
+        Setelah transfer, upload bukti pembayaran
+    </p>
+</div>
+
+    <!-- ✅ WAJIB UPLOAD -->
+    <div class="mb-3">
+        <label class="form-label">Upload Bukti Pembayaran</label>
+        <input type="file"
+               name="bukti_bayar_elva"
+               class="form-control"
+               accept="image/*"
+               required>
+    </div>
+
+    <button class="btn btn-success w-100">
+        Proses Checkout
+    </button>
+</form>
 
                 </div>
             </div>
@@ -137,6 +189,28 @@
 
     </div>
 </div>
+<script>
+function showPaymentOptions() {
+    let metode = document.getElementById("metode_bayar").value;
+    let opsi = document.getElementById("opsi_transfer");
 
+    if (metode === "TRANSFER") {
+        opsi.style.display = "block";
+    } else {
+        opsi.style.display = "none";
+    }
+}
+
+function showQRIS() {
+    let metode = document.getElementById("metode_transfer").value;
+    let qris = document.getElementById("qris_box");
+
+    if (metode === "QRIS") {
+        qris.style.display = "block";
+    } else {
+        qris.style.display = "none";
+    }
+}
+</script>
 </body>
 </html>

@@ -1,151 +1,235 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <title>Pilih Obat - Apotek Elva</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin:0; padding:0; box-sizing:border-box; font-family:'Poppins',sans-serif; }
-        body { background:#f8f9fa; color:#333; }
+<meta charset="UTF-8">
+<title>Pilih Obat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 
-        .header {
-            background:#2980b9;
-            color:white;
-            padding:18px 30px;
-        }
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-        .container { padding:20px; }
+<style>
 
-        table {
-            width:100%;
-            border-collapse:collapse;
-            background:white;
-            border-radius:8px;
-            overflow:hidden;
-            box-shadow:0 2px 8px rgba(0,0,0,0.05);
-        }
+/* ===== GLOBAL ===== */
+body{
+    background: #f4f6f9;
+    font-family: 'Poppins', sans-serif;
+}
 
-        th, td {
-            padding:12px;
-            border-bottom:1px solid #eee;
-            text-align:left;
-        }
+/* ===== JUDUL ===== */
+h3{
+    font-weight: 600;
+    color: #2c3e50;
+}
 
-        th {
-            background:#2980b9;
-            color:white;
-        }
+/* ===== SEARCH BOX ===== */
+form{
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+}
 
-        td img {
-            width:50px;
-            border-radius:6px;
-        }
+input.form-control, select.form-select{
+    border-radius: 10px;
+    border: 1px solid #ddd;
+    padding: 10px;
+}
 
-        .btn {
-            padding:12px;
-            background:#3498db;
-            color:white;
-            border:none;
-            border-radius:8px;
-            cursor:pointer;
-            font-weight:600;
-            margin-top:20px;
-            width:100%;
-        }
+input.form-control:focus, select.form-select:focus{
+    border-color: #3498db;
+    box-shadow: none;
+}
 
-        .btn:hover { background:#2980b9; }
+/* ===== CARD OBAT ===== */
+.card-obat{
+    border-radius: 18px;
+    transition: all 0.25s ease;
+    border: none;
+    overflow: hidden;
+    background: white;
+}
 
-        .loading {
-            display:none;
-            margin-top:10px;
-            text-align:center;
-            color:#2980b9;
-            font-weight:600;
-        }
-    </style>
+/* hover efek */
+.card-obat:hover{
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+/* gambar */
+.obat-img{
+    height: 140px;
+    object-fit: contain;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 12px;
+}
+
+/* isi card */
+.card-body{
+    padding: 10px;
+}
+
+/* nama obat */
+.card-body h6{
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+/* kategori */
+.card-body small.text-muted{
+    font-size: 12px;
+}
+
+/* stok */
+.card-body small{
+    font-size: 13px;
+}
+
+/* checkbox */
+.form-check-input{
+    transform: scale(1.2);
+    cursor: pointer;
+}
+
+/* ===== BUTTON ===== */
+.btn-primary{
+    border-radius: 10px;
+    font-weight: 500;
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    border: none;
+}
+
+.btn-primary:hover{
+    background: linear-gradient(135deg, #2980b9, #1f6691);
+}
+
+/* tombol tambah */
+.btn-success{
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px;
+    background: linear-gradient(135deg, #27ae60, #1e8449);
+    border: none;
+    margin-top: 10px;
+}
+
+.btn-success:hover{
+    background: linear-gradient(135deg, #1e8449, #186a3b);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width:768px){
+    .obat-img{
+        height: 120px;
+    }
+}
+
+</style>
 </head>
-<body>
 
-<div class="header">
-    <h2>💊 Pilih Obat - Apotek Elva</h2>
-</div>
+<body class="bg-light">
 
-<div class="container">
+<div class="container py-4">
 
-    <div class="obat-list">
-        <table>
-            <thead>
-                <tr>
-                    <th>No</th>
-                    <th>Kode</th>
-                    <th>Nama</th>
-                    <th>Jenis</th>
-                    <th>Expire</th>
-                    <th>Gambar</th>
-                    <th>Pilih</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for obat in obat_list %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ obat.kode_obat_elva }}</td>
-                    <td>{{ obat.nama_obat_elva }}</td>
-                    <td>{{ obat.jenis_obat_elva }}</td>
-                    <td>{{ obat.tanggal_exp_elva }}</td>
-                    <td>
-                        {% if obat.gambar_elva %}
-                            <img src="{{ url_for('static', filename='upload_obat/' + obat.gambar_elva) }}">
-                        {% else %}
-                            <img src="{{ url_for('static', filename='images/default.png') }}">
-                        {% endif %}
-                    </td>
-                    <td>
-                        <input type="checkbox" class="obat-checkbox" value="{{ obat.id_obat_elva }}">
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+<h3 class="mb-3">💊 Pilih Obat</h3>
+
+<!-- 🔍 SEARCH + FILTER -->
+<form method="GET" class="row g-2 mb-4">
+
+    <!-- SEARCH -->
+    <div class="col-md-5">
+        <input type="text" name="search" class="form-control"
+               placeholder="Cari obat..." value="{{ search }}">
     </div>
 
-    <button class="btn" onclick="tambahObat()">Tambah Obat ke Keranjang</button>
+    <!-- KATEGORI -->
+    <div class="col-md-4">
+        <select name="kategori" class="form-select" onchange="this.form.submit()">
 
-    <div class="loading" id="loadingText">Menambahkan ke keranjang...</div>
+            <!-- SEMUA -->
+            <option value="">Semua Kategori</option>
+
+            {% for k in kategori_list %}
+            <option value="{{ k.id_kategori_elva }}"
+                {% if kategori == k.id_kategori_elva|string %}selected{% endif %}>
+                {{ k.nama_kategori_elva }}
+            </option>
+            {% endfor %}
+
+        </select>
+    </div>
+
+    <!-- BUTTON -->
+    <div class="col-md-3">
+        <button class="btn btn-primary w-100">Cari</button>
+    </div>
+
+</form>
+
+<!-- 🧾 LIST OBAT -->
+<div class="row">
+
+{% for obat in obat_list %}
+<div class="col-md-3 mb-4">
+    <div class="card card-obat shadow-sm p-2">
+
+        <img src="{{ url_for('static', filename='upload_obat/' + obat.gambar_elva) }}"
+             class="card-img-top obat-img">
+
+        <div class="card-body">
+
+            <h6>{{ obat.nama_obat_elva }}</h6>
+
+            <small class="text-muted">{{ obat.nama_kategori_elva }}</small><br>
+
+            <small>Stok: {{ obat.stok_elva }}</small>
+
+            <div class="form-check mt-2">
+                <input class="form-check-input pilih"
+                       type="checkbox"
+                       value="{{ obat.id_obat_elva }}">
+                <label>Pilih</label>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+</div>
+
+<!-- BUTTON TAMBAH -->
+<button onclick="tambahObat()" class="btn btn-success w-100">
+    Tambah ke Resep
+</button>
 
 </div>
 
 <script>
 function tambahObat(){
 
-    let selected = [];
-    document.querySelectorAll('.obat-checkbox:checked')
-        .forEach(cb => selected.push(cb.value));
+    let data = [];
 
-    if(selected.length === 0){
-        alert("Pilih minimal 1 obat");
+    document.querySelectorAll('.pilih:checked')
+    .forEach(el => data.push(el.value));
+
+    if(data.length === 0){
+        alert("Pilih obat dulu!");
         return;
     }
 
     fetch('/tambah_obat_ke_keranjang',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({obat_ids:selected})
+        body:JSON.stringify({obat_ids:data})
     })
     .then(res=>res.json())
-    .then(data=>{
-        if(data.status === "success"){
-
-            // kirim data ke halaman kasir via localStorage
-            localStorage.setItem("keranjang_update", JSON.stringify(data));
-
-            // tutup halaman / kembali tanpa reload full
-            window.location.href = "/kasir_offline_elva";
-        }
+    .then(res=>{
+        window.location.href = "/kasir_offline_elva";
     });
-}
 
+}
 </script>
 
 </body>

@@ -160,7 +160,7 @@
                 </div>
 
                 <div class="col-md-4">
-                    <select name="kategori_elva" class="form-select">
+                    <select name="kategori_elva" class="form-select" onchange="this.form.submit()">
                         <option value="">Semua Kategori</option>
                         {% for kategori in kategori_elva %}
                         <option value="{{ kategori.id_kategori_elva }}"
@@ -256,40 +256,40 @@
 
             <div class="list-group small">
                 {% for p in list_pesanan %}
-                <div class="list-group-item">
+<div class="list-group-item">
 
-                    <div class="fw-bold">{{ p.no_faktur_elva }}</div>
+    <div class="fw-bold">{{ p.no_faktur_elva }}</div>
 
-                    <div class="text-muted">
-                        {{ p.tanggal_elva.strftime('%d-%m-%Y') }} ·
-                        Rp {{ "{:,.0f}".format(p.total_elva) }}
-                    </div>
+    <div class="text-muted">
+        {{ p.tanggal_elva.strftime('%d-%m-%Y') }} ·
+        Rp {{ "{:,.0f}".format(p.total_elva) }}
+    </div>
 
-                    {% if p.status_elva == 'diproses' %}
-                    <span class="badge bg-primary">Diproses</span>
+    {% if p.status_pengiriman == 'diverifikasi' %}
+        <span class="badge bg-primary">Diverifikasi</span>
 
-                    {% elif p.status_pengiriman == 'dikirim' %}
-                    <span class="badge bg-warning text-dark">Dikirim</span>
+    {% elif p.status_pengiriman == 'dikemas' %}
+        <span class="badge bg-warning text-dark">Dikemas</span>
 
-                    {% elif p.status_tracking == 'sampai' %}
-                    <span class="badge bg-success">Selesai</span>
+    {% elif p.status_pengiriman == 'diserahkan_ke_kurir' %}
+        <span class="badge bg-info">Dikirim</span>
 
-                    {% else %}
-                    <span class="badge bg-secondary">{{ p.status_elva }}</span>
-                    {% endif %}
+    {% elif p.status_pengiriman == 'sampai' %}
+        <span class="badge bg-success">Selesai</span>
 
-                    <div class="mt-2 d-flex gap-2 flex-wrap">
+    {% else %}
+        <span class="badge bg-secondary">Menunggu</span>
+    {% endif %}
 
-                        <a href="{{ url_for('detail_pesanan_elva', id_transaksi=p.id_transaksi_elva) }}"
-                        class="btn btn-sm btn-outline-primary">
-                        Detail
-                        </a>
+    <div class="mt-2">
+        <a href="{{ url_for('detail_pesanan_elva', id_transaksi=p.id_transaksi_elva) }}"
+           class="btn btn-sm btn-outline-primary">
+            Detail
+        </a>
+    </div>
 
-
-                    </div>
-
-                                    </div>
-                {% endfor %}
+</div>
+{% endfor %}
             </div>
 
             {% endif %}

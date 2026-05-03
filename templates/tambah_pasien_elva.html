@@ -5,7 +5,6 @@
     <title>Tambah Pasien - Apotek Elva</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* CSS untuk Tema Biru Putih */
         * {
             margin: 0;
             padding: 0;
@@ -36,7 +35,6 @@
             display: block;
             margin-bottom: 10px;
             font-weight: 600;
-            color: #333;
         }
 
         input, select, textarea {
@@ -62,7 +60,6 @@
             background-color: #3498db;
             color: white;
             cursor: pointer;
-            transition: background 0.3s ease;
         }
 
         button:hover {
@@ -72,21 +69,23 @@
         .form-group {
             margin-bottom: 20px;
         }
-
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Tambah Pasien</h1>
         <form method="POST">
+
             <div class="form-group">
                 <label for="nama_lengkap">Nama Lengkap</label>
                 <input type="text" name="nama_lengkap" id="nama_lengkap" required>
             </div>
+
             <div class="form-group">
                 <label for="tanggal_lahir">Tanggal Lahir</label>
                 <input type="date" name="tanggal_lahir" id="tanggal_lahir" required>
             </div>
+
             <div class="form-group">
                 <label for="jenis_kelamin">Jenis Kelamin</label>
                 <select name="jenis_kelamin" id="jenis_kelamin" required>
@@ -94,66 +93,29 @@
                     <option value="Perempuan">Perempuan</option>
                 </select>
             </div>
+
             <div class="form-group">
                 <label for="alamat">Alamat</label>
                 <input type="text" name="alamat" id="alamat" required>
             </div>
-            <div class="form-group">
-                <label for="umur">Umur</label>
-                <input type="number" name="umur" id="umur">
-            </div>
+
             <div class="form-group">
                 <label for="no_telepon">No. Telepon</label>
                 <input type="text" name="no_telepon" id="no_telepon">
             </div>
-            <div class="form-group">
-                <label for="golongan_darah">Golongan Darah</label>
-                <select name="golongan_darah" id="golongan_darah" required>
-                    <option value="">-- Pilih Golongan Darah--</option>
-                    <option value="A">A</option>
-                    <option value="B">B</option>
-                    <option value="AB">AB</option>
-                    <option value="O">O</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="status_perkawinan">Status Perkawinan</label>
-                <select name="status_perkawinan" id="status_perkawinan" required>
-                    <option value="">--Pilih Status--</option>
-                    <option value="Sudah Menikah">Sudah Menikah</option>
-                    <option value="Belum Menikah">Belum Menikah</option>
-                    <option value="Pelajar">Pelajar</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="pekerjaan">Pekerjaan</label>
-                <input type="text" name="pekerjaan" id="pekerjaan">
-            </div>
-            <div class="form-group">
-                <label for="riwayat_penyakit">Riwayat Penyakit</label>
-                <textarea name="riwayat_penyakit" id="riwayat_penyakit"></textarea>
-            </div>
+
             <div class="form-group">
                 <label for="alergi">Alergi</label>
                 <textarea name="alergi" id="alergi"></textarea>
             </div>
-            <div class="form-group">
-                <label for="tanggal_kunjungan">Tanggal Kunjungan</label>
-                <input type="date" name="tanggal_kunjungan" id="tanggal_kunjungan">
-            </div>
-            <div class="form-group">
-                <label for="status_kesehatan">Status Kesehatan</label>
-                <select name="status_kesehatan" id="status_kesehatan" required>
-                    <option value="Stabil">Stabil</option>
-                    <option value="Membaik">Membaik</option>
-                    <option value="Memburuk">Memburuk</option>
-                </select>
-            </div>
+
             <div class="form-group">
                 <label for="catatan_khusus">Catatan Khusus</label>
                 <textarea name="catatan_khusus" id="catatan_khusus"></textarea>
             </div>
+
             <button type="submit">Tambah Pasien</button>
+
         </form>
     </div>
 </body>

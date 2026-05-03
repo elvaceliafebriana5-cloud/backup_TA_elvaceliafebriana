@@ -49,10 +49,102 @@ Metode: {{ transaksi.metode_bayar_elva }} <br>
 <hr>
 <b>Total: Rp {{ transaksi.total_elva }}</b>
 <hr>
+{% set metode = transaksi.metode_bayar_elva|lower %}
 
-<form method="POST" action="/konfirmasi_bayar_online/{{ transaksi.id_transaksi_elva }}">
-    <button class="btn">✔ Konfirmasi Bayar</button>
-</form>
+{% if metode == 'dana' and transaksi.status_elva != 'selesai' %}
+    <form method="POST" action="/konfirmasi_ambil/{{ transaksi.id_transaksi_elva }}">
+        <button class="btn">✔ Konfirmasi Ambil</button>
+    </form>
 
+{% elif metode == 'cod' and transaksi.status_pembayaran_elva != 'lunas' %}
+    <button class="btn" type="button" onclick="openModal()">
+        ✔ Konfirmasi Bayar (COD)
+    </button>
+{% endif %}
+<!-- MODAL -->
+<div id="modalBayar" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5);">
+
+    <div style="background:white; width:90%; max-width:300px; margin:100px auto; padding:20px; border-radius:10px;">
+
+        <h4>Input Uang Tunai</h4>
+
+        <p>Total: <b>Rp {{ transaksi.total_elva }}</b></p>
+
+        <input type="number" id="uang" placeholder="Masukkan uang" 
+style="width:100%; padding:10px; margin-bottom:10px;" required>
+
+        <p>Kembalian: <b id="kembalian">Rp 0</b></p>
+
+        <button onclick="prosesBayar()" style="width:100%; padding:10px; background:green; color:white; border:none;">
+            ✔ Bayar
+        </button>
+
+        <button onclick="closeModal()" style="width:100%; padding:10px; margin-top:5px;">
+            Batal
+        </button>
+
+    </div>
+</div>
+<script>
+function openModal(){
+    document.getElementById("modalBayar").style.display = "block";
+}
+
+function closeModal(){
+    document.getElementById("modalBayar").style.display = "none";
+}
+
+const total = {{ transaksi.total_elva }};
+
+document.addEventListener("input", function(e){
+    if(e.target.id === "uang"){
+        let uang = parseInt(e.target.value) || 0;
+        let kembali = uang - total;
+
+        document.getElementById("kembalian").innerText =
+            kembali >= 0 ? "Rp " + kembali : "Uang kurang!";
+    }
+});
+function prosesBayar(){
+    let uangInput = document.getElementById("uang").value;
+    let uang = parseInt(uangInput);
+
+    if(!uangInput){
+        alert("Masukkan uang terlebih dahulu!");
+        return;
+    }
+
+    if(uang < total){
+        alert("Uang tidak cukup!");
+        return;
+    }
+
+    fetch("/konfirmasi_bayar_online/{{ transaksi.id_transaksi_elva }}", {
+        method: "POST"
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        if(data.status === "success"){
+            alert("Pembayaran berhasil ✔");
+
+            // 🔥 LANGSUNG KE DASHBOARD KASIR
+            window.location.href = "/kasir_offline_elva";
+
+        } else {
+            alert(data.message);
+
+            // 🔥 kalau sudah bayar sebelumnya → tetap ke dashboard
+            if(data.message === "Sudah dibayar"){
+                window.location.href = "/kasir_offline_elva";
+            }
+        }
+
+    })
+    .catch(() => {
+        alert("Terjadi kesalahan!");
+    });
+}
+</script>
 </body>
 </html>
